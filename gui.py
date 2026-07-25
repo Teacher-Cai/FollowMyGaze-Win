@@ -7,6 +7,7 @@
 - 训练相关按钮/自动训练全部走后台线程，绝不阻塞 Tkinter mainloop。
 """
 import logging
+import os
 import threading
 import time
 import tkinter as tk
@@ -42,8 +43,9 @@ class RedDotOverlay:
     - 位置由 GlobalInfo.red_dot_x / red_dot_y 驱动，_tick 每 30ms 移动圆形
     - 幂等：重复 start/stop 无副作用
     """
-    def __init__(self, root):
+    def __init__(self, root, icon_img=None):
         self._root = root
+        self._icon_img = icon_img
         self._win = None       # tk.Toplevel
         self._canvas = None    # tk.Canvas
         self._dot_id = None    # canvas item id
@@ -58,7 +60,12 @@ class RedDotOverlay:
             return
         try:
             self._win = tk.Toplevel(self._root)
-            self._win.title("红点追踪（按 Esc 关闭）")
+            self._win.title("FollowMyGaze - 红点追踪")
+            if self._icon_img is not None:
+                try:
+                    self._win.iconphoto(True, self._icon_img)
+                except Exception:
+                    pass
             self._win.attributes("-topmost", True)
             w = GlobalInfo.screen_width or self._win.winfo_screenwidth()
             h = GlobalInfo.screen_height or self._win.winfo_screenheight()
@@ -127,18 +134,24 @@ class GazeApp:
     def __init__(self):
         # ---------- 根窗口 ----------
         self.root = tk.Tk()
-        self.root.title("看我眼神")
+        self.root.title("FollowMyGaze")
         self.root.geometry("1200x1200+0+0")
         self.root.resizable(True, True)
         GlobalInfo.root = self.root
 
         # —— 设置窗口图标 ——
+        self._app_icon_img = None
         try:
             from utils import resource_path
-            icon_img = ImageTk.PhotoImage(Image.open(resource_path("icon.png")))
-            self.root.iconphoto(True, icon_img)
+            icon_ico = resource_path("icon.ico")
+            icon_png = resource_path("icon.png")
+            if os.path.exists(icon_ico):
+                self.root.iconbitmap(icon_ico)
+            elif os.path.exists(icon_png):
+                self._app_icon_img = ImageTk.PhotoImage(Image.open(icon_png))
+                self.root.iconphoto(True, self._app_icon_img)
         except Exception:
-            pass
+            logger.exception("set window icon failed")
 
         # ---------- 后台线程池 ----------
         self._frame_executor = ThreadPoolExecutor(
@@ -174,7 +187,7 @@ class GazeApp:
         self._build_mode_selector()
 
         # ---------- 红点悬浮层（持久）----------
-        self.red_dot_overlay = RedDotOverlay(self.root)
+        self.red_dot_overlay = RedDotOverlay(self.root, icon_img=self._app_icon_img)
 
         # ---------- 视线-鼠标交互模式管理器 ----------
         self.cursor_mode_manager = CursorModeManager()
