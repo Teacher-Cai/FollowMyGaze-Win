@@ -3,6 +3,8 @@ import mediapipe as mp
 import numpy as np
 import math
 
+from global_info import GlobalInfo
+
 
 class GazeFeatureExtractor:
     def __init__(self):
@@ -422,8 +424,8 @@ class GazeFeatureExtractor:
 def main():
     estimator = GazeFeatureExtractor()
 
-    # 打开摄像头
-    cap = cv2.VideoCapture(0)
+    # 打开摄像头（使用 GlobalInfo 中配置的索引）
+    cap = cv2.VideoCapture(int(GlobalInfo.camera_index))
 
     while cap.isOpened():
         success, image = cap.read()

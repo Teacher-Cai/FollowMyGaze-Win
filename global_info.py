@@ -52,4 +52,6 @@ class GlobalInfo:
     root = None
     # 用户数据目录（项目本地）
     path_dir = os.path.dirname(os.path.abspath(__file__))
+    # 摄像头索引（多摄像头用户可配置）
+    camera_index = 0
 

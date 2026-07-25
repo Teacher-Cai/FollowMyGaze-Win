@@ -204,6 +204,9 @@ class GazeApp:
         # ---------- 关闭标志 ----------
         self._closing = False
 
+        # —— 保存 main.py 中默认打开的摄像头索引 ——
+        self._camera_opened_index = int(GlobalInfo.camera_index)
+
         # —— 加载 GUI 配置，初始化界面值 ——
         self._load_gui_config()
 
@@ -248,6 +251,17 @@ class GazeApp:
                        variable=self.auto_train_var,
                        command=self._on_auto_train_toggle
                        ).grid(row=0, column=1, padx=8)
+        tk.Label(frame, text="摄像头：").grid(row=0, column=2, padx=(16, 4))
+        self.camera_index_var = tk.IntVar(
+            value=int(GlobalInfo.camera_index))
+        self.camera_index_spin = tk.Spinbox(
+            frame, from_=0, to=9, width=4, textvariable=self.camera_index_var,
+            command=self._on_camera_index_changed)
+        self.camera_index_spin.grid(row=0, column=3, padx=4)
+        self.camera_index_hint = tk.Label(
+            frame, text=f"当前：{int(GlobalInfo.camera_index)}",
+            fg="green", width=10, anchor='w')
+        self.camera_index_hint.grid(row=0, column=4, padx=4)
 
         # ─── 视线跳转 ───
         jump_frame = tk.LabelFrame(self.root, text="视线跳转", padx=6, pady=4)
@@ -459,6 +473,25 @@ class GazeApp:
                 self.glide_exp_hint.config(text=f"当前：{v:.1f}（大=早刹）")
         except Exception:
             logger.exception("restore glide_dist_exponent failed")
+        try:
+            if 'camera_index' in cfg:
+                v = int(cfg['camera_index'])
+                self.camera_index_var.set(v)
+                GlobalInfo.camera_index = v
+                self.camera_index_hint.config(text=f"当前：{v}")
+        except Exception:
+            logger.exception("restore camera_index failed")
+
+    def _reload_camera_if_needed(self):
+        """启动时，如果保存的 camera_index 与当前打开的不一致，则重新打开摄像头。"""
+        try:
+            current = int(GlobalInfo.camera_index)
+            if self._camera_opened_index != current:
+                logger.info("camera_index changed from %s to %s, reopening...",
+                            self._camera_opened_index, current)
+                self._reopen_camera()
+        except Exception:
+            logger.exception("reload camera if needed failed")
 
     def _load_gui_config_runtime(self):
         """运行时从 GlobalInfo 同步最新值到界面。"""
@@ -512,6 +545,11 @@ class GazeApp:
             self.glide_exp_var.set(float(GlobalInfo.gaze_glide_dist_exponent))
             self.glide_exp_hint.config(
                 text=f"当前：{float(GlobalInfo.gaze_glide_dist_exponent):.1f}（大=早刹）")
+        except Exception:
+            pass
+        try:
+            self.camera_index_var.set(int(GlobalInfo.camera_index))
+            self.camera_index_hint.config(text=f"当前：{int(GlobalInfo.camera_index)}")
         except Exception:
             pass
 
@@ -623,6 +661,19 @@ class GazeApp:
         except (TypeError, ValueError):
             pass
 
+    def _on_camera_index_changed(self):
+        try:
+            v = int(self.camera_index_var.get())
+            if v < 0 or v > 9:
+                raise ValueError("camera index out of range")
+            GlobalInfo.camera_index = v
+            self.camera_index_hint.config(text=f"当前：{v}")
+            save_gui_config(camera_index=v)
+            # 重新打开摄像头使用新索引
+            self._reopen_camera()
+        except (TypeError, ValueError):
+            pass
+
     # ================== 训练 UI 回调 ==================
     def _training_ui_callback(self, event, *args):
         """train_model 的 UI 回调，通过 root.after 切回主线程更新界面。"""
@@ -728,7 +779,7 @@ class GazeApp:
         except Exception:
             pass
         try:
-            GlobalInfo.video_steam = cv2.VideoCapture(0)
+            GlobalInfo.video_steam = cv2.VideoCapture(int(GlobalInfo.camera_index))
             if GlobalInfo.video_steam.isOpened():
                 GlobalInfo.video_steam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 logger.info("camera reinitialized successfully")
@@ -757,6 +808,7 @@ class GazeApp:
                 glide_near_threshold=int(GlobalInfo.gaze_glide_near_threshold),
                 glide_far_threshold=int(GlobalInfo.gaze_glide_far_threshold),
                 glide_dist_exponent=float(GlobalInfo.gaze_glide_dist_exponent),
+                camera_index=int(GlobalInfo.camera_index),
             )
         except Exception:
             logger.exception("save gui config failed")
@@ -829,6 +881,9 @@ class GazeApp:
 
     # ================== 启动 ==================
     def run(self):
+        # 如果保存的摄像头索引与默认打开的不一致，则重新打开
+        self._reload_camera_if_needed()
+
         # 初始化 sample count 显示
         try:
             train_data = GlobalInfo.train_data

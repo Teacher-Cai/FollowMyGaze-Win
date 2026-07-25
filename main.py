@@ -13,7 +13,7 @@ os.makedirs(GlobalInfo.path_dir, exist_ok=True)
 
 # init
 GlobalInfo.train_and_predict_instance = GazeController()
-GlobalInfo.video_steam = cv2.VideoCapture(0)
+GlobalInfo.video_steam = cv2.VideoCapture(int(GlobalInfo.camera_index))
 GlobalInfo.train_data = GazeDataset()
 GlobalInfo.screen_width, GlobalInfo.screen_height = pyautogui.size()
 GlobalInfo.gaze_feature_extractor = GazeFeatureExtractor()
