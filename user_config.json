@@ -1,0 +1,11 @@
+{
+  "auto_train": true,
+  "follow_ease": 0.35,
+  "follow_idle_seconds": 3.0,
+  "glide_dist_exponent": 2.0,
+  "glide_far_threshold": 500,
+  "glide_multiplier": 20.0,
+  "glide_near_threshold": 300,
+  "jump_cooldown_ms": 2000,
+  "jump_threshold": 300
+}

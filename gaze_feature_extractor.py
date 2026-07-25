@@ -284,97 +284,139 @@ class GazeFeatureExtractor:
 
 
     def extract_features_from_image(self, image):
-        """从图像中提取全部特征"""
+        """从图像中提取全部特征（124 维，对齐 Mac 版）。
+
+        特征布局（索引）：
+          0..4   : 人脸 bbox（xmin, ymin, xmax, ymax, face_area）
+          5..7   : 头部姿态角（pitch, yaw, roll）
+          8..15  : 左眼虹膜特征（rel_x, rel_y, iris_x, iris_y, openness, ratio_x, ratio_y, iris_aspect）
+          16..23 : 右眼虹膜特征（同上）
+          24     : 双眼虹膜水平偏移差（辐辏信号）
+          25..27 : 左眼 3D 视线方向向量（归一化）
+          28..30 : 右眼 3D 视线方向向量（归一化）
+          31     : 瞳孔间距 IPD（3D）
+          32..123: 原始关键点坐标（16 左眼 + 16 右眼 + 5 左虹膜 + 5 右虹膜 + 4 其他）× 2(x,y) = 92
+        """
         rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         results = self.face_mesh.process(rgb_image)
 
         if not results.multi_face_landmarks:
             return None
 
-        # 找到最大的人脸
-        largest_face = self.find_largest_face(results.multi_face_landmarks, image.shape)
+        # 取第一个检测到的人脸（对齐 Mac 版行为）
+        face_landmarks = results.multi_face_landmarks[0]
+        lms = face_landmarks.landmark
+        h, w = image.shape[:2]
 
-        if largest_face:
-            face_landmarks = largest_face
-            height, width = image.shape[:2]
+        features = []
 
-            # 提取眼部关键点
-            left_eye_points = []
-            for idx in self.LEFT_EYE_INDICES:
-                landmark = face_landmarks.landmark[idx]
-                x, y = landmark.x * width, landmark.y * height
-                left_eye_points.append([x, y])
+        # ===== A. 人脸位置（像素单位，idx 0..4）=====
+        px_coords = np.array([(lm.x * w, lm.y * h) for lm in lms])
+        xmin, ymin = np.min(px_coords, axis=0).astype(int)
+        xmax, ymax = np.max(px_coords, axis=0).astype(int)
+        face_area = int((ymax - ymin) * (xmax - xmin))
+        features.extend([xmin, ymin, xmax, ymax, face_area])
 
-            right_eye_points = []
-            for idx in self.RIGHT_EYE_INDICES:
-                landmark = face_landmarks.landmark[idx]
-                x, y = landmark.x * width, landmark.y * height
-                right_eye_points.append([x, y])
+        # ===== B. 姿态角（idx 5..7）=====
+        head_pose = self.calculate_head_pose(image, face_landmarks)
+        if head_pose:
+            features.extend([head_pose['pitch'], head_pose['yaw'], head_pose['roll']])
+        else:
+            features.extend([0.0, 0.0, 0.0])
 
-            # 提取虹膜关键点
-            left_iris_points = []
-            for idx in self.LEFT_IRIS_INDICES:
-                landmark = face_landmarks.landmark[idx]
-                x, y = landmark.x * width, landmark.y * height
-                left_iris_points.append([x, y])
+        # ===== C. 左眼虹膜特征（idx 8..15）=====
+        iris_l = lms[468]       # 左虹膜中心
+        eye_l_outer = lms[33]   # 左眼外角
+        eye_l_inner = lms[133]  # 左眼内角
+        eye_l_top = lms[159]    # 左眼上眼睑
+        eye_l_bot = lms[145]    # 左眼下眼睑
 
-            right_iris_points = []
-            for idx in self.RIGHT_IRIS_INDICES:
-                landmark = face_landmarks.landmark[idx]
-                x, y = landmark.x * width, landmark.y * height
-                right_iris_points.append([x, y])
+        eye_l_width = abs(eye_l_inner.x - eye_l_outer.x)
+        eye_l_height = abs(eye_l_top.y - eye_l_bot.y)
+        eye_l_mid_x = (eye_l_inner.x + eye_l_outer.x) / 2
+        eye_l_mid_y = (eye_l_inner.y + eye_l_outer.y) / 2
+        eye_l_rel_x = iris_l.x - eye_l_mid_x
+        eye_l_rel_y = iris_l.y - eye_l_mid_y
+        eye_l_openness = eye_l_height / (eye_l_width + 1e-6)
+        eye_l_ratio_x = (iris_l.x - eye_l_outer.x) / (eye_l_inner.x - eye_l_outer.x + 1e-6)
+        eye_l_ratio_y = (iris_l.y - eye_l_top.y) / (eye_l_bot.y - eye_l_top.y + 1e-6)
 
-            # 计算特征向量
-            features = []
+        iris_l_left = lms[469]
+        iris_l_top_pt = lms[470]
+        iris_l_right = lms[471]
+        iris_l_bot_pt = lms[472]
+        iris_l_vis_w = abs(iris_l_left.x - iris_l_right.x)
+        iris_l_vis_h = abs(iris_l_top_pt.y - iris_l_bot_pt.y)
+        iris_l_aspect = iris_l_vis_h / (iris_l_vis_w + 1e-6)
 
-            # 眼部几何特征
-            left_eye_array = np.array(left_eye_points)
-            right_eye_array = np.array(right_eye_points)
+        features.extend([eye_l_rel_x, eye_l_rel_y, iris_l.x, iris_l.y,
+                         eye_l_openness, eye_l_ratio_x, eye_l_ratio_y, iris_l_aspect])
 
-            # 眼宽和眼高
-            left_eye_width = np.max(left_eye_array[:, 0]) - np.min(left_eye_array[:, 0])
-            left_eye_height = np.max(left_eye_array[:, 1]) - np.min(left_eye_array[:, 1])
-            right_eye_width = np.max(right_eye_array[:, 0]) - np.min(right_eye_array[:, 0])
-            right_eye_height = np.max(right_eye_array[:, 1]) - np.min(right_eye_array[:, 1])
+        # ===== D. 右眼虹膜特征（idx 16..23）=====
+        iris_r = lms[473]
+        eye_r_outer = lms[263]
+        eye_r_inner = lms[362]
+        eye_r_top = lms[386]
+        eye_r_bot = lms[374]
 
-            features.extend([left_eye_width, left_eye_height, right_eye_width, right_eye_height])
+        eye_r_width = abs(eye_r_inner.x - eye_r_outer.x)
+        eye_r_height = abs(eye_r_top.y - eye_r_bot.y)
+        eye_r_mid_x = (eye_r_inner.x + eye_r_outer.x) / 2
+        eye_r_mid_y = (eye_r_inner.y + eye_r_outer.y) / 2
+        eye_r_rel_x = iris_r.x - eye_r_mid_x
+        eye_r_rel_y = iris_r.y - eye_r_mid_y
+        eye_r_openness = eye_r_height / (eye_r_width + 1e-6)
+        eye_r_ratio_x = (iris_r.x - eye_r_outer.x) / (eye_r_inner.x - eye_r_outer.x + 1e-6)
+        eye_r_ratio_y = (iris_r.y - eye_r_top.y) / (eye_r_bot.y - eye_r_top.y + 1e-6)
 
-            # 虹膜位置特征
-            left_iris_center = np.mean(left_iris_points, axis=0)
-            right_iris_center = np.mean(right_iris_points, axis=0)
+        iris_r_left = lms[474]
+        iris_r_top_pt = lms[475]
+        iris_r_right = lms[476]
+        iris_r_bot_pt = lms[477]
+        iris_r_vis_w = abs(iris_r_left.x - iris_r_right.x)
+        iris_r_vis_h = abs(iris_r_top_pt.y - iris_r_bot_pt.y)
+        iris_r_aspect = iris_r_vis_h / (iris_r_vis_w + 1e-6)
 
-            # 瞳孔与眼睑相对位置
-            left_eye_center = np.mean(left_eye_array, axis=0)
-            right_eye_center = np.mean(right_eye_array, axis=0)
+        features.extend([eye_r_rel_x, eye_r_rel_y, iris_r.x, iris_r.y,
+                         eye_r_openness, eye_r_ratio_x, eye_r_ratio_y, iris_r_aspect])
 
-            left_pupil_offset = left_iris_center - left_eye_center
-            right_pupil_offset = right_iris_center - right_eye_center
+        # ===== E. 双眼虹膜水平偏移差（辐辏信号，idx 24）=====
+        features.append(eye_l_rel_x - eye_r_rel_x)
 
-            features.extend([
-                left_pupil_offset[0], left_pupil_offset[1],
-                right_pupil_offset[0], right_pupil_offset[1]
-            ])
+        # ===== F. 左眼 3D 视线方向向量（idx 25..27）=====
+        eye_l_center_3d = np.array([
+            (eye_l_inner.x + eye_l_outer.x) / 2,
+            (eye_l_inner.y + eye_l_outer.y) / 2,
+            (eye_l_inner.z + eye_l_outer.z) / 2,
+        ])
+        iris_l_3d = np.array([iris_l.x, iris_l.y, iris_l.z])
+        gaze_vec_l = iris_l_3d - eye_l_center_3d
+        gaze_vec_l_norm = gaze_vec_l / (np.linalg.norm(gaze_vec_l) + 1e-6)
+        features.extend(gaze_vec_l_norm.tolist())
 
-            # 眼部关键点相对位置
-            for point in left_eye_points:
-                normalized_point = [(point[0] - left_eye_center[0]) / left_eye_width,
-                                    (point[1] - left_eye_center[1]) / left_eye_height]
-                features.extend(normalized_point)
+        # ===== G. 右眼 3D 视线方向向量（idx 28..30）=====
+        eye_r_center_3d = np.array([
+            (eye_r_inner.x + eye_r_outer.x) / 2,
+            (eye_r_inner.y + eye_r_outer.y) / 2,
+            (eye_r_inner.z + eye_r_outer.z) / 2,
+        ])
+        iris_r_3d = np.array([iris_r.x, iris_r.y, iris_r.z])
+        gaze_vec_r = iris_r_3d - eye_r_center_3d
+        gaze_vec_r_norm = gaze_vec_r / (np.linalg.norm(gaze_vec_r) + 1e-6)
+        features.extend(gaze_vec_r_norm.tolist())
 
-            for point in right_eye_points:
-                normalized_point = [(point[0] - right_eye_center[0]) / right_eye_width,
-                                    (point[1] - right_eye_center[1]) / right_eye_height]
-                features.extend(normalized_point)
+        # ===== H. 瞳孔间距 IPD（3D，idx 31）=====
+        ipd_3d = float(np.linalg.norm(iris_l_3d - iris_r_3d))
+        features.append(ipd_3d)
 
-            # 头部信息
-            head_pose = self.calculate_head_pose(image, largest_face)
-            features.extend([head_pose['yaw'], head_pose['pitch'], head_pose['roll']])
+        # ===== I. 原始关键点坐标（idx 32..123）=====
+        for i in (self.LEFT_EYE_INDICES + self.RIGHT_EYE_INDICES +
+                  self.LEFT_IRIS_INDICES + self.RIGHT_IRIS_INDICES +
+                  [168, 4, 8, 9]):
+            features.append(lms[i].x)
+            features.append(lms[i].y)
 
-            face_position_data = self.calculate_face_position_and_area(largest_face, image.shape)
-            features.extend(face_position_data['bbox'])
-            features.extend(face_position_data['relative_size'])
-
-            return np.array(features)
+        return np.array(features, dtype=np.float32)
 
 
 def main():

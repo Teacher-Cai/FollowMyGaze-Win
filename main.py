@@ -1,3 +1,4 @@
+import os
 import cv2
 import pyautogui
 
@@ -7,11 +8,12 @@ from global_info import GlobalInfo
 from gui import run_gui
 from train_and_predict_dnn import GazeController
 
-# load config
+# 确保数据目录存在
+os.makedirs(GlobalInfo.path_dir, exist_ok=True)
 
 # init
 GlobalInfo.train_and_predict_instance = GazeController()
-GlobalInfo.video_steam = cv2.VideoCapture(GlobalInfo.camera_index_select.get())
+GlobalInfo.video_steam = cv2.VideoCapture(0)
 GlobalInfo.train_data = GazeDataset()
 GlobalInfo.screen_width, GlobalInfo.screen_height = pyautogui.size()
 GlobalInfo.gaze_feature_extractor = GazeFeatureExtractor()
