@@ -1,5 +1,6 @@
 {
   "auto_train": true,
+  "camera_index": 0,
   "follow_ease": 0.35,
   "follow_idle_seconds": 3.0,
   "glide_dist_exponent": 2.0,
