@@ -1,6 +1,6 @@
 # FollowMyGaze
 > 用眼睛替手腕省下每天上千次的鼠标位移，降低腱鞘炎风险、提升工作效率。
-> 最终目标：让视线成为你操作电脑的主力，逐步替代鼠标。
+> 最终目标：让视线成为你操作电脑的主力，逐步替代鼠标。视频介绍：https://www.bilibili.com/video/BV11ng969Ete/
 <p>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows-lightgrey">
   <img alt="python" src="https://img.shields.io/badge/python-3.9%2B-blue">
