@@ -1,4 +1,7 @@
 # FollowMyGaze
+
+**语言 / Language：** 中文 | [English](#english-version)
+
 > 用眼睛替手腕省下每天上千次的鼠标位移，降低腱鞘炎风险、提升工作效率。
 > 最终目标：让视线成为你操作电脑的主力，逐步替代鼠标。视频介绍：https://www.bilibili.com/video/BV11ng969Ete/
 <p>
@@ -423,3 +426,427 @@ A: 见[与 Mac 版的差异](#与-mac-版的差异)。核心差异：无需系�
 ---
 ## License
 MIT License - 详见 [LICENSE](LICENSE) 文件。
+
+---
+# English Version
+
+> Save your wrist thousands of mouse displacements every day — lower the risk of tenosynovitis and get more done.
+> Ultimate goal: make gaze the primary way you operate your computer, gradually replacing the mouse. Video intro: https://www.bilibili.com/video/BV11ng969Ete/
+
+**Language / 语言：** [中文](#followmygaze) | English
+
+FollowMyGaze is a **personalized gaze tracking + gaze–mouse hybrid interaction** tool that runs on your own computer.
+It takes an ordinary webcam as input, uses [MediaPipe FaceLandmarker](https://developers.google.com/mediapipe/solutions/vision/face_landmarker) to extract face/eye geometric features, trains a small PyTorch model built on **Mixture-of-Experts with physics-prior gating**, and feeds the predicted gaze coordinates into several interaction modes: red-dot display, cursor follow, gaze jump, gaze follow and gaze glide.
+
+> This repository is the **Windows version**, ported from [FollowMyGaze-Mac](https://github.com/Teacher-Cai/FollowMyGaze-Mac). It keeps the Mac version's GazeMoE architecture and interaction modes, and adapts them to Windows (Tkinter threading model, camera API, etc.).
+
+## Project Positioning
+**The core goal of this project is to reduce mouse usage.** In modern office work, clicking and dragging are extremely frequent, extremely repetitive actions; over time they lead to carpal tunnel syndrome, tenosynovitis and other repetitive strain injuries, and they slow you down. FollowMyGaze aims to:
+- **Reduce mouse operations** — move the most tiring part (long-range cursor travel) from your wrist to your eyes.
+- **Lower the risk of tenosynovitis / mouse hand** — cut down repeated micro-movements and static load on the wrist and fingers.
+- **Improve efficiency** — gaze is great at fast long-range transfers; the hand only handles the last centimeter of fine positioning.
+- **Eventually replace the mouse** — the long-term goal is for gaze to become the primary input method.
+**A side benefit: it is also a lightweight deep learning playground.** Because "you can tell whether a model is good with your own eyes", the project covers data collection, feature engineering, model training, shadow-model deployment, real-time inference and the interaction layer end to end — ideal for experiments where you "change one line, then verify it instantly with your eyes".
+Key characteristics of the whole system:
+- **Highly personalized**: every click you make becomes a training sample; the model keeps learning your head-pose + eye-movement habits online.
+- **Highly interpretable**: 124 hand-crafted geometric features plus two explicit experts (head pose / iris) — you can see at a glance what changed when you changed something.
+- **End-to-end engineering**: from data collection, feature engineering, model training, shadow-model deployment and real-time inference to the mouse interaction layer — small but complete.
+> ⚠️ This project is currently a personal experiment / prototype tool, not a general-purpose SDK. Model quality depends heavily on your own sampling quality.
+---
+## Contents
+- [Project Positioning](#project-positioning)
+- [Background](#background)
+  - [Perspective 1: Lowering mouse-hand / tenosynovitis risk](#perspective-1-lowering-mouse-hand--tenosynovitis-risk)
+  - [Perspective 2: A lightweight deep learning experimentation platform](#perspective-2-a-lightweight-deep-learning-experimentation-platform)
+- [Features](#features)
+- [Differences from the Mac Version](#differences-from-the-mac-version)
+- [Quick Start](#quick-start)
+  - [Requirements](#requirements)
+  - [Launch](#launch)
+  - [Basic Workflow](#basic-workflow)
+- [Interaction Modes](#interaction-modes)
+- [Model Design](#model-design)
+- [Training and Inference](#training-and-inference)
+- [Configuration](#configuration)
+- [Project Structure](#project-structure)
+- [FAQ](#faq)
+- [Development Tips](#development-tips)
+- [Roadmap](#roadmap)
+- [License](#license-1)
+---
+## Background
+FollowMyGaze is not meant to be "yet another general-purpose gaze tracking SDK". It serves two audiences that look unrelated but both benefit from **"gaze-driven + personalized learning"**. Understanding both perspectives helps you decide whether to run it, and how.
+### Perspective 1: Lowering mouse-hand / tenosynovitis risk
+For people who use a computer for long hours, mouse operations are **extremely frequent and extremely repetitive**:
+- thousands of clicks every day
+- lots of small wrist adjustments (dragging the cursor from A to B)
+- holding a static posture of "forearm extended + wrist floating + thumb abducted" for long periods
+Over time these accumulate into common problems:
+- **Carpal tunnel syndrome**: compression of the median nerve, causing finger numbness and reduced grip strength
+- **Tenosynovitis** (De Quervain / trigger finger): repeated friction inflames the tendon sheath, causing soreness in the thumb, index finger and wrist
+- **Mouse elbow / tennis elbow**: repeated loading and inflammation of the lateral epicondyle
+- **Neck and shoulder tension**: holding the elbow up keeps the trapezius and levator scapulae tight
+**The value of FollowMyGaze is not "replacing the mouse", but moving the most tiring part of every cursor movement — long-range travel — from the wrist to the eyes.** Concretely:
+1. **Eliminate most long drags**
+   Look somewhere and the cursor jumps/glides there. A large movement from the top-left to the bottom-right of the screen used to need a lifted wrist and forearm coordination; now 90%+ of the distance needs almost no hand movement.
+2. **The hand only does the "last centimeter"**
+   `gaze_glide` / `gaze_jump` both mean **long distance handled by gaze, short distance left to the hand**. This plays to both strengths: gaze is fast over long ranges, the hand is precise over short ranges.
+3. **Fewer finger/wrist micro-movements**
+   Switching from your editor to a browser and clicking a button traditionally means "move mouse → click", possibly with 10+ small adjustments. With gaze glide, one quick push plus gaze focus lands you near the target.
+4. **Less static load time**
+   Traditional mouse use requires your hand to stand by on the mouse at all times; the modes here let you **take your hand off the mouse completely** to do other things (read, think), touching it only when you actually need to click.
+5. **Keep the controllability of a normal mouse**
+   The project deliberately avoids "fully hands-free gaze control" and instead offers **several hybrid modes** (Alt trigger, gaze jump trigger, gaze glide acceleration) — your hand stays in charge and gaze only acts as an amplifier. That reduces strain without sacrificing precision or predictability.
+> This is not a medical device claim; it is a reasonable inference from an ergonomics standpoint. If you have real RSI (repetitive strain injury) symptoms, see a doctor.
+**Who might benefit**:
+- programmers, designers and operations staff who spend more than 6 hours a day on keyboard and mouse
+- people with mild wrist discomfort who want to reduce their usage intensity
+- users with large monitors / dual displays where the cursor has to travel far
+- users who want to free their hands while reading or watching videos
+### Perspective 2: A lightweight deep learning experimentation platform
+If the health angle is for **every heavy user**, the engineering angle is for **every developer interested in deep learning**.
+Most introductory deep learning projects stop at "train an MNIST / CIFAR classifier", where all you can see is a changing accuracy number. FollowMyGaze offers a completely different learning loop: **you can tell whether a model is good with your own eyes.**
+This brings several unique teaching / experimentation advantages:
+1. **Immediate, visual feedback**
+   Change the model, train once, open the red-dot tracking window and judge with your eyes: how far off is the red dot from your gaze? Does it fail at the screen corners? Is there obvious jitter or drift? This is far more intuitive than watching a loss curve, and much more likely to trigger real intuition.
+2. **Full coverage of the deep learning engineering pipeline**
+   The project contains every key step from data to deployment, and each step is small enough to read and modify:
+   - **Data collection**: the mouse click listener in `utils.py`
+   - **Feature engineering**: the 124 hand-crafted geometric features in `gaze_feature_extractor.py`
+   - **Model architecture**: MoE + CrossNet + ResBlock in `gaze_feature_based_model.py`
+   - **Loss design**: the multi-task weighted loss in `train_and_predict_dnn.py`
+   - **Training loop**: Adam + BN + Dropout, with full and online configurations
+   - **Online learning**: automatic training triggers in `data_process_dnn.py`
+   - **Model deployment**: shadow model + atomic swap + EMA smoothing
+   - **Real-time inference**: Tk main thread + background thread pool + 30 fps camera
+   - **Interaction layer**: several mouse control modes to validate model quality
+3. **Every change can be verified immediately**
+   - add a new feature → train → see whether the red dot is steadier
+   - change the gating threshold strategy → train → watch drift when head pose changes
+   - change a loss weight → train → look at the error distribution for different eye states
+   - tune the EMA alpha → feel the trade-off between smoothness and latency
+4. **Moderate data size, low experiment cost**
+   A few thousand local samples, and one training run takes tens of seconds to a few minutes. Unlike toy datasets it stays close to real engineering; unlike large projects you don't wait a day per experiment. **The whole "edit code → train → verify with your eyes" loop stays under 5 minutes**, which is ideal for fast iteration.
+5. **Exposes real engineering problems**
+   This is not a clean algorithm exercise but a complete system where **engineering details must be solved**:
+   - How do the training and inference threads share a model? (→ shadow model)
+   - Does BatchNorm pollute running stats at inference time? (→ eval/train isolation)
+   - What if the camera drops frames? (→ auto reconnect + frame-task backpressure)
+   - What if event-stream latency drags the mouse back? (→ relative displacement instead of absolute coordinates)
+   - What if the UI freezes during training? (→ everything on background threads + `root.after`)
+   These pitfalls show up in almost every real-time AI system, and they are worth hitting yourself.
+6. **Encourages physics-intuition-driven model design**
+   Point of regard = head pose contribution + iris deflection contribution. That physical intuition directly determines the MoE structure, with gating routed by the `||rel||` physics prior. This "derive the network from domain priors" approach cannot be learned from toy examples, yet it is exactly how models are designed in industry.
+**How to use it**:
+- Deep learning beginners: compare `SimpleDNN` and `GazeMoE` to understand why residual connections, BN and gating are added
+- Intermediate developers: try changing features, architecture or loss, then train → verify with your eyes
+- People learning "real-time AI systems engineering": `gui.py` + `train_and_predict_dnn.py` together are a complete small online-learning platform
+---
+## Features
+Built around the two perspectives above, the project offers:
+- 🎥 **Real-time camera preview**: a Tkinter GUI showing the camera feed.
+- 🧠 **MediaPipe face feature extraction**: face, iris and head-pose related features via MediaPipe FaceMesh.
+- 🖱️ **Click sampling**: a left click saves the current gaze features plus the click coordinates as a training sample.
+- 💾 **Sample persistence**: samples are stored in `~/FollowMyGaze/samples/samples.pkl`.
+- 🔢 **Sample counter**: shows `local samples + session samples = total samples`.
+- 🏋️ **Manual training**: one-click "train on all data", running on all samples in the background.
+- ⚙️ **Automatic training**: every `auto_train_threshold` new samples are persisted and trained in the background.
+- 🌗 **Shadow model training**: training uses a shadow model and atomically replaces the inference model when done, so training and inference never interfere.
+- 🔴 **Red-dot tracking window**: shows the current predicted gaze position for easy visual verification.
+- ✋ **Multiple mouse interaction modes**: background training / Alt cursor follow / gaze jump / gaze follow / gaze glide.
+- 🎛️ **Parameter persistence**: GUI parameters are saved on exit to the config file specified by `user_config.py` and restored on the next launch.
+---
+## Differences from the Mac Version
+| Aspect | Mac version | Windows version |
+|------|--------|------------|
+| Feature dimension | 124 | 124 (aligned with Mac) |
+| Feature extraction file | `gaze_feature_extractor_mac.py` | `gaze_feature_extractor.py` |
+| System permissions | Camera + Accessibility + Input Monitoring | Camera only (`pynput` and `pyautogui` need no extra permissions on Windows) |
+| UI threading model | background threads may update the UI | the main thread must drive the UI via `root.after` |
+| Packaging | `.app` (ad-hoc signed) | `.exe` (PyInstaller) |
+| GazeMoE model | same architecture | same architecture (identical) |
+| Interaction modes | all 5 | all 5 (same implementation) |
+---
+## Quick Start
+> **TL;DR (3 steps)**
+> ```bash
+> pip install opencv-python pyautogui mediapipe numpy pandas torch pillow pynput
+> python main.py
+> ```
+> Then look at the screen and left-click a few times to sample → click "train on all data" → open red-dot tracking to see the result.
+### Requirements
+Recommended environment:
+- Windows 10/11
+- Python 3.9+
+- A webcam
+Main Python dependencies:
+```bash
+pip install opencv-python pyautogui mediapipe numpy pandas torch pillow pynput
+```
+CUDA users should install the PyTorch build matching their GPU, following the [official PyTorch guide](https://pytorch.org/get-started/locally/).
+### Launch
+From the project root:
+```bash
+python main.py
+```
+The main window appears:
+- **Top**: camera preview
+- **Middle**: hints, sample counter, current mode
+- **Mode selection**: background training / cursor follow (Alt) / gaze jump / gaze follow / gaze glide
+- **Controls**: red-dot tracking button, auto-train toggle, and parameter panels grouped by mode:
+  - **Gaze jump**: trigger distance, cooldown
+  - **Gaze follow**: pause after user action, follow smoothness
+  - **Gaze glide**: acceleration multiplier, deceleration start distance, full-speed distance, deceleration steepness
+- **Bottom**: manual training button and training progress bar
+> Parameter values are persisted on exit (`user_config.py`) and restored on the next launch.
+### Basic Workflow
+**1. Start the program**
+```bash
+python main.py
+```
+Make sure the camera preview appears.
+**2. Collect samples**
+Keep your head and eyes in a natural state, look at a point on the screen, then left-click that point with the mouse.
+Each left click saves:
+- the gaze features extracted from the current frame
+- the mouse click coordinates `(x, y)`
+Samples first go into the session buffer and are persisted:
+- automatically every time `GlobalInfo.auto_train_threshold` new samples accumulate
+- on exit, for any samples not yet persisted
+Sample file path:
+```text
+~/FollowMyGaze/samples/samples.pkl
+```
+**3. Train the model**
+Option 1: manual training. Click "train on all data" in the GUI; the program loads all local samples, trains the model and shows progress.
+Option 2: automatic training, enabled by default:
+```python
+GlobalInfo.enable_auto_train = True
+GlobalInfo.auto_train_threshold = 1024
+```
+Every 1024 new samples trigger a background full training run, using `online_training_epoch` epochs. The trained model is saved to:
+```text
+~/FollowMyGaze/gaze_model_resnet.pth
+```
+It is loaded automatically on the next launch.
+**4. Check the predictions**
+Click "show red-dot tracking" to open a red-dot overlay across the screen, driven by the gaze coordinates predicted by the current model.
+Close it with `Esc` / by clicking the red-dot window / by closing the window.
+**A suggested first session**:
+1. Collect 200–500 samples covering the four corners and the center of the screen
+2. Run "train on all data" once manually
+3. Open the red-dot tracking window to feel how the model performs
+4. If it is not good enough, keep sampling and training; if it is OK, switch to an interaction mode
+---
+## Interaction Modes
+Mode switching is managed by `gaze_cursor_modes.py::CursorModeManager`. All modes can coexist with red-dot tracking.
+### 1. Background training
+The GUI default mode. It only samples and predicts, and never moves the mouse. Good for:
+- collecting training data
+- watching the red-dot predictions
+- safe debugging
+### 2. Cursor follow (Alt)
+- the model keeps predicting gaze coordinates
+- while `Alt` is held, the mouse repeatedly moves to the predicted gaze position
+- releasing `Alt` stops the movement
+Suited to low-frequency, triggered control — it never keeps grabbing the mouse.
+### 3. Gaze jump (`gaze_jump`)
+**Trigger logic**: when you move the mouse manually and the distance between the current mouse position and the predicted gaze point exceeds a threshold, the mouse **jumps once** to near the gaze position. After a jump it enters a cooldown period to avoid repeated triggering.
+GUI parameters ("Gaze jump" panel): `trigger distance (px)` is a text field that takes effect once a valid positive integer is entered; `cooldown (ms)` is a slider adjusted live.
+Related configuration:
+```python
+gaze_jump_jump_threshold = 300
+gaze_jump_cooldown_ms = 2000
+gaze_jump_min_user_move = 5
+```
+### 4. Gaze follow (`gaze_follow`)
+**Trigger logic**: when the user has not touched the mouse for a while, the cursor eases toward the gaze position automatically; once user movement is detected the auto-follow pauses, and it resumes after the user has been idle for more than `idle_seconds`.
+Related configuration:
+```python
+gaze_follow_idle_seconds = 3.0
+gaze_follow_user_move_pixel = 3
+gaze_follow_step_interval_ms = 30
+gaze_follow_ease = 0.35
+```
+GUI parameters ("Gaze follow" panel): `pause after user action (s)` and `follow smoothness`, both sliders taking effect live.
+### 5. Gaze glide (`gaze_glide`)
+**Trigger logic**: when the user moves the mouse, the system checks:
+1. whether the current mouse position is far enough from the gaze position
+2. whether the mouse movement direction is consistent with the direction "current mouse position → gaze position"
+3. whether the cosine of the angle between the two directions exceeds a threshold
+If so, extra relative displacement is added to this mouse movement, producing "glide acceleration toward the gaze direction".
+The speed factor is approximately:
+```text
+factor = 1 + (max_multiplier - 1) × dist_factor × dir_factor
+```
+where:
+- `dist_factor`: closer to 1 the farther away, closer to 0 the closer to the gaze point
+- `dir_factor`: closer to 1 the more aligned the direction, 0 when misaligned
+- `max_multiplier`: the maximum acceleration multiplier
+GUI parameters: `acceleration multiplier`, a live slider. Besides that, the same "Gaze glide" panel also exposes: deceleration start distance, full-speed distance, deceleration steepness.
+Related configuration:
+```python
+gaze_glide_max_multiplier = 5.0       # max acceleration multiplier (slider-adjustable)
+gaze_glide_near_threshold = 300       # distance to gaze <= this → no acceleration
+gaze_glide_far_threshold = 500        # distance to gaze >= this → distance factor maxed out
+gaze_glide_cos_threshold = 0.6        # cos <= this is treated as direction mismatch
+gaze_glide_stroke_reset_ms = 200      # mouse pause longer than this → reset stroke origin
+gaze_glide_min_stroke_len = 20        # strokes shorter than this skip direction checking
+gaze_glide_dist_exponent = 2.0        # distance-factor curve exponent; >1 decays faster up close (hard braking)
+gaze_glide_overshoot_anchor_ratio = 0.5  # overshoot anchor: extra displacement lands at most "near*ratio" from the target
+```
+**Implementation notes** (lessons learned):
+- Use `pyautogui.move(dx, dy)` for **relative displacement accumulation** rather than `moveTo(x, y)` absolute jumps, so that event-queue lag does not drag the mouse back.
+- Use the **live cursor position** `pyautogui.position()` to compute distance and gaze direction, reducing race conditions during fast manual movement.
+- No acceleration up close, so you can position precisely near the target.
+---
+## Model Design
+Gaze prediction is fundamentally a **multi-factor regression** problem: the point of regard on screen depends both on **the head's pose relative to the screen** (how the head is positioned) and on **the eyes' deflection relative to the head** (where the pupils are looking). Physically, the two are **additively** combined:
+```text
+gaze_on_screen ≈ f_head(head pose) + f_iris(iris deflection)
+```
+Instead of cramming both factors into a single end-to-end regression, FollowMyGaze's model (`gaze_feature_based_model.py::GazeMoE`) models them explicitly as two expert networks:
+### Architecture
+```
+input x (124 geometric features)
+       │
+       ├──→ Head expert ──→ y_head (point of regard contributed by head pose)
+       │
+       ├──→ Iris expert ──→ y_iris (displacement contributed by iris deflection)
+       │
+       └──→ Gate routing ──→ gate ∈ [0, 1] (physics-prior gate based on ||pupil offset||)
+                              │
+                    y_final = y_head + gate × y_iris
+```
+### The two experts
+- **Head expert**: 124-dim input → CrossNet feature crossing → 4 ResidualBlocks → outputs `y_head` (2-dim). Predicts the "base position" of the point of regard from global features such as head pose and face position.
+- **Iris expert**: structurally identical to the Head expert. Predicts the "extra displacement caused by iris deflection" `y_iris` from local features such as iris/pupil offsets. Its last layer concatenates `y_head.detach()` as an anchor to avoid gradient contamination.
+### Gate routing
+The gate is not a freely learnable parameter but is based on a **physics prior**:
+- extract the pupil offset relative to the eye socket center from the 124 features (indices 8, 9, 16, 17: left/right eye_rel_x/y)
+- compute `||rel||` (offset magnitude) and binarize it with an Otsu adaptive threshold
+- during training, hard binarization uses STE (Straight-Through Estimator); at inference a soft gate is used
+- the gate also includes a learnable fine-tuning residual (default scale=0, i.e. disabled)
+**Physical intuition**: when the iris is centered (gate≈0), the point of regard is determined entirely by head pose; when the iris deflects (gate≈1), the point of regard = head pose + iris deflection.
+### Multi-task loss
+Training does not only supervise the final output `y_final`; auxiliary losses guide the two experts to do their own jobs:
+- `loss_final`: MSE(y_final, label) — the main objective
+- `loss_head_aux`: strongly supervise y_head ≈ label when the iris is centered, weakly when deflected
+- `loss_iris_aux`: teach y_iris the full contribution when the iris is deflected, force it to zero when centered
+### Feature normalization
+Input features are Z-score normalized with EMA-updated statistics (mean and std stored as model buffers in the state_dict), so that feature distributions match between training and inference.
+---
+## Training and Inference
+### Shadow model
+Having training and inference share one model instance causes thread conflicts. The solution:
+1. clone a shadow model and train on the shadow
+2. the inference thread keeps using the original `self.model`, unaffected by training
+3. when training finishes, call shadow.eval() and atomically replace `self.model = shadow`
+4. the next inference frame automatically uses the new model
+### Online learning
+- every left click becomes a training sample (features + coordinates)
+- every `auto_train_threshold` (default 1024) samples automatically trigger a background full training run
+- training uses `online_training_epoch` (default 40) epochs, and the model takes effect when done
+- a GUI toggle controls whether automatic training is enabled
+### Inference
+- inference runs in the main thread inside the frame loop driven by `root.after` (Tkinter is not thread-safe on Windows)
+- the actual computation is submitted to a `ThreadPoolExecutor` so the UI never blocks
+- predicted coordinates are smoothed with an EMA (exponential moving average, α=0.9) to reduce frame-to-frame jitter
+- the camera reconnects automatically after dropped frames, and frame tasks do not pile up
+---
+## Configuration
+All tunable parameters live in the `GlobalInfo` class in `global_info.py`:
+
+### Training parameters
+```python
+online_training_batchSize = 2048    # online training batch size
+online_training_epoch = 40          # online training epochs
+offline_training_batchSize = 2048   # full training batch size
+offline_training_epoch = 400        # full training epochs
+auto_train_threshold = 1024         # auto-training trigger threshold (sample count)
+enable_auto_train = True            # whether automatic training is enabled
+sample_upper_limit = 100000         # sample cap
+```
+
+### Interaction mode parameters
+See the configuration blocks for each interaction mode above. The GUI parameter panels adjust them live and persist them to `user_config.json` on exit.
+
+### Multi-task loss weights (`train_and_predict_dnn.py`)
+```python
+LOSS_W_FINAL = 1.0        # main loss on the final prediction
+LOSS_W_HEAD_AUX = 0.8     # auxiliary loss on y_head
+LOSS_W_IRIS_AUX = 0.5     # auxiliary loss on y_iris
+```
+---
+## Project Structure
+```
+FollowMyGaze/
+├── main.py                      # entry point: init data dir, camera, start GUI
+├── gui.py                       # Tkinter GUI: main window, parameter panels, frame loop, mode switching
+├── global_info.py               # global config and state (GlobalInfo class)
+├── user_config.py               # user config persistence (JSON read/write)
+├── gaze_feature_extractor.py    # MediaPipe feature extraction: 124 geometric features
+├── gaze_feature_based_model.py  # model definitions: SimpleDNN / ResNet / GazeMoE
+├── train_and_predict_dnn.py     # training/inference controller: shadow model, multi-task loss, EMA smoothing
+├── data_process_dnn.py          # dataset management: sampling, persistence, auto-training triggers
+├── gaze_cursor_modes.py         # mouse interaction modes: follow, jump, follow, glide
+├── utils.py                     # utilities: red-dot window, click listener, prediction scheduling
+├── data_process.py              # [legacy] image-level dataset processing
+├── train_and_predict.py         # [legacy] image-level training controller
+├── cnn_model.py                 # [legacy] image-level CNN model
+├── test.py                      # test script
+├── asset/
+│   └── app_gui.png              # GUI screenshot
+└── README.md
+```
+Core file dependencies:
+```
+main.py
+  ├── gui.py
+  │     ├── gaze_cursor_modes.py  ← interaction modes
+  │     ├── utils.py              ← red dot / click listener / prediction scheduling
+  │     └── user_config.py        ← config persistence
+  ├── gaze_feature_extractor.py   ← feature extraction
+  └── train_and_predict_dnn.py    ← training/inference
+        ├── gaze_feature_based_model.py  ← GazeMoE model
+        └── data_process_dnn.py          ← data management
+```
+---
+## FAQ
+### Q: The camera does not open / shows a black screen?
+A: Check whether another program is using the camera. The Windows "Camera" app or a browser video call may hold it exclusively. Close the others and restart `python main.py`. The program has a built-in camera auto-reconnect mechanism.
+### Q: The red dot does not follow my gaze?
+A: Possible causes: 1) too few samples (200+ recommended); 2) the model has never been trained (click "train on all data"); 3) insufficient lighting on the face makes MediaPipe feature extraction unstable. Make sure sampling quality is good, then train.
+### Q: The GUI stutters while training?
+A: Training runs on a background thread, so the UI should not freeze. If it does, it is usually a lack of CPU resources. Try lowering `online_training_batchSize` or `online_training_epoch`.
+### Q: Where are the model files?
+A: The model is saved to `~/FollowMyGaze/gaze_model_resnet.pth`. Samples are in `~/FollowMyGaze/samples/samples.pkl`.
+### Q: How do I reset all data?
+A: Delete the `~/FollowMyGaze/` directory to clear all samples and models.
+### Q: The mouse interaction modes do not work?
+A: Check that you switched away from "background training". `Gaze jump` requires you to move the mouse manually to trigger; `gaze follow` only starts after you have been idle for a few seconds; `gaze glide` only accelerates when you move the mouse toward the gaze direction.
+### Q: What is different from the Mac version?
+A: See [Differences from the Mac Version](#differences-from-the-mac-version). The key differences: no system permission setup, and the UI is driven by the Tkinter main thread. The GazeMoE architecture, feature dimension and interaction modes are identical.
+---
+## Development Tips
+### Fast experiment loop
+1. change the model (`gaze_feature_based_model.py`) or the loss (`train_and_predict_dnn.py`)
+2. delete the old model file `~/FollowMyGaze/gaze_model_resnet.pth`
+3. run `python main.py`, collect samples → train → verify with the red dot
+4. the whole loop stays under 5 minutes
+### Debugging tips
+- set `GlobalInfo.enable_auto_train = False` so automatic training does not interfere with debugging
+- the red-dot tracking window is the most direct feedback on model quality
+- `gate_mean`, `gate_min`, `gate_max` in the training log show whether gating works properly (ideally it is polarized: mostly ≈0 or ≈1)
+### Adding new features
+After appending features in `gaze_feature_extractor.py::extract_features_from_image`, remember to update:
+- the `input_size` parameter of `GazeMoE`
+- `GATE_FEATURE_INDICES` if the new features shift the pupil offset indices
+---
+## Roadmap
+- [ ] Blink click: use a blink to replace the left mouse button
+- [ ] Richer feature engineering: explore a hybrid of end-to-end CNN features + geometric features
+- [ ] Eye movement type recognition: distinguish saccades, fixations and smooth pursuit
+---
+## License
+MIT License - see the [LICENSE](LICENSE) file for details.
